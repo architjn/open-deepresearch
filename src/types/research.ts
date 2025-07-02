@@ -46,9 +46,16 @@ export interface Source {
   extractedAt: Date;
 }
 
+export interface ResearchLogEntry {
+  timestamp: string; // ISO string
+  message: string;
+  type: 'info' | 'debug' | 'tool_call' | 'result' | 'error';
+  details?: Record<string, unknown>; // e.g., tool name, args, output
+}
+
 export interface ResearchStep {
   id: string;
-  type: 'search' | 'analysis' | 'synthesis' | 'verification';
+  type: 'search' | 'analysis' | 'synthesis' | 'verification' | 'planning' | 'reporting'; // Add 'planning', 'reporting'
   description: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   progress: number;
@@ -57,6 +64,9 @@ export interface ResearchStep {
   error?: string;
   sources?: Source[];
   findings?: string[];
+  // New:
+  logs?: ResearchLogEntry[]; // Detailed logs for this step
+  phase?: string; // e.g., "Thinking", "Clarifying Request", "Executing Search"
 }
 
 export interface ResearchAnalysis {
@@ -113,6 +123,10 @@ export interface FactCheck {
   explanation: string;
 }
 
+import { ResearchReport } from "@/lib/research/ai-agent";
+
+
+
 export interface ResearchResult {
   id: string;
   request: ResearchRequest;
@@ -130,6 +144,8 @@ export interface ResearchResult {
   endTime?: Date;
   totalSources: number;
   credibilityScore: number;
+  structuredReport?: ResearchReport; // Add this line
+  currentPhase?: string; // High-level phase for UI display
 }
 
 export interface ResearchState {
@@ -137,4 +153,12 @@ export interface ResearchState {
   researchHistory: ResearchResult[];
   isResearching: boolean;
   currentStep?: ResearchStep;
+}
+
+export interface ResearchStepUpdate {
+  stepId: string;
+  phase?: string;
+  status?: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number;
+  logEntry?: ResearchLogEntry;
 }

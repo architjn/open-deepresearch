@@ -1,28 +1,9 @@
 "use client";
 
-import { ResearchReport } from "@/lib/research/ai-agent";
-
-interface AIResearchResult {
-  success: boolean;
-  query: string;
-  depth: string;
-  content: string;
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-  }>;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-  structuredReport?: ResearchReport;
-  timestamp: string;
-}
+import { ResearchResult } from "@/types/research";
 
 interface ResearchResultsProps {
-  result: AIResearchResult;
+  result: ResearchResult;
 }
 
 export function ResearchResults({ result }: ResearchResultsProps) {
@@ -35,7 +16,7 @@ export function ResearchResults({ result }: ResearchResultsProps) {
       <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-600">
         No structured report available. Displaying raw content:
         <pre className="mt-4 p-4 bg-gray-100 rounded-lg text-left whitespace-pre-wrap">
-          {result.content}
+          {result.detailedFindings}
         </pre>
       </div>
     );
@@ -56,7 +37,7 @@ export function ResearchResults({ result }: ResearchResultsProps) {
           <p className="text-gray-700">
             {structuredReport.summary ||
               `Based on the research conducted on "${
-                result.query
+                result.request.query
               }", we analyzed ${
                 structuredReport.sources?.length || 0
               } sources across multiple categories. The research revealed key insights and perspectives that provide a comprehensive understanding of the topic.`}
@@ -103,8 +84,8 @@ export function ResearchResults({ result }: ResearchResultsProps) {
           Detailed Findings
         </h4>
         <div className="prose prose-sm max-w-none text-gray-700">
-          {result.content ||
-            `Our research into "${result.query}" covered multiple aspects and sources. Key findings include various perspectives and evidence-based insights that provide a comprehensive view of the topic. Further analysis reveals important implications and considerations for understanding this subject matter.`}
+          {result.detailedFindings ||
+            `Our research into "${result.request.query}" covered multiple aspects and sources. Key findings include various perspectives and evidence-based insights that provide a comprehensive view of the topic. Further analysis reveals important implications and considerations for understanding this subject matter.`}
         </div>
       </div>
 

@@ -1,42 +1,40 @@
 "use client";
 
-import { ResearchReport } from "@/lib/research/ai-agent";
 import { useState } from "react";
 import { ResearchResults } from "./ResearchResults";
-
-interface ResearchResult {
-  success: boolean;
-  query: string;
-  depth: string;
-  content: string;
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-  }>;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-  structuredReport?: ResearchReport;
-  timestamp: string;
-}
+import { useResearchStore } from "@/lib/stores/research-store";
+import ResearchProgressDisplay from "./ResearchProgressDisplay";
+import { ResearchStepUpdate } from "@/types/research";
 
 export function ResearchInterface() {
   const [query, setQuery] = useState("");
   const [depth, setDepth] = useState<"surface" | "deep">("deep");
-  const [isResearching, setIsResearching] = useState(false);
-  const [result, setResult] = useState<ResearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const { currentResearch, isResearching, startNewResearch, updateResearchProgress } = useResearchStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
 
-    setIsResearching(true);
     setError(null);
-    setResult(null);
+    startNewResearch({
+      id: Date.now().toString(), // Unique ID for this research session
+      request: { query: query.trim(), depth },
+      plan: { subQueries: [], searchStrategies: [], analysisFrameworks: [], estimatedSteps: 0, estimatedTimeMinutes: 0 },
+      steps: [],
+      sources: [],
+      analysis: { perspectives: [], confidenceLevel: 0, gaps: [] },
+      executiveSummary: "",
+      detailedFindings: "",
+      recommendations: [],
+      followUpQuestions: [],
+      status: "planning",
+      progress: 0,
+      startTime: new Date(),
+      totalSources: 0,
+      credibilityScore: 0,
+    });
 
     try {
       const response = await fetch("/api/research/start", {
@@ -50,17 +48,49 @@ export function ResearchInterface() {
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || "Research failed");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to start research");
       }
 
-      setResult(data);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Failed to get reader from response body.");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const update: ResearchStepUpdate = JSON.parse(line.substring(6));
+              updateResearchProgress(update);
+            } catch (parseError) {
+              console.error("Error parsing SSE data:", parseError);
+            }
+          } else if (line.startsWith("event: end")) {
+            // Research completed
+            updateResearchProgress({ stepId: "final-report", status: "completed", progress: 100 });
+          } else if (line.startsWith("event: error")) {
+            const errorData = JSON.parse(line.substring(12));
+            setError(errorData.message || "An error occurred during research.");
+            updateResearchProgress({ stepId: "error", status: "failed" });
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error occurred");
-    } finally {
-      setIsResearching(false);
+      updateResearchProgress({ stepId: "error", status: "failed" });
     }
   };
 
@@ -192,13 +222,19 @@ export function ResearchInterface() {
             </div>
           </div>
         )}
-      </div>
 
-      {result && (
-        <div className="mt-8">
-          <ResearchResults result={result} />
-        </div>
-      )}
+        {isResearching && currentResearch && (
+          <div className="mt-8 h-[600px]">
+            <ResearchProgressDisplay researchResult={currentResearch} />
+          </div>
+        )}
+
+        {!isResearching && currentResearch && currentResearch.status === "completed" && (
+          <div className="mt-8">
+            <ResearchResults result={currentResearch} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import createLogger from "@/lib/utils/logger";
 import { openai } from "@ai-sdk/openai";
 import { CoreTool, generateObject, generateText, tool } from "ai";
 import { z } from "zod";
+import { ResearchStepUpdate } from "@/types/research";
 
 const logger = createLogger("AI Agent");
 
@@ -101,10 +102,21 @@ const researchTools: Record<string, CoreTool> = {
 export async function conductResearch(
   query: string,
   depth: "surface" | "deep" = "deep",
-  onProgress?: (update: string) => void
+  onProgress?: (update: ResearchStepUpdate) => void
 ) {
+  let currentStepId: string;
+
+  // Initial "Thinking" phase
+  currentStepId = "thinking-phase";
+  onProgress?.({ stepId: currentStepId, phase: "Thinking", status: "running" });
+  onProgress?.({ stepId: currentStepId, logEntry: { timestamp: new Date().toISOString(), message: "AI is formulating a research plan.", type: "info" } });
+
+  // Clarifying Request phase
+  currentStepId = "clarifying-request";
+  onProgress?.({ stepId: currentStepId, phase: "Clarifying the request", status: "running" });
+  onProgress?.({ stepId: currentStepId, logEntry: { timestamp: new Date().toISOString(), message: "Analyzing user query and context.", type: "info" } });
   try {
-    onProgress?.("Starting AI research agent...");
+    
     logger.debug(
       `Conducting research for query: '${query}' with depth: '${depth}'`
     );
@@ -133,6 +145,13 @@ export async function conductResearch(
 
       Start by explaining your research strategy, then use the tools systematically to gather and analyze information.`,
     });
+
+    // Final "Reporting" phase
+    currentStepId = "generating-report";
+    onProgress?.({ stepId: currentStepId, phase: "Generating Final Report", status: "running" });
+    onProgress?.({ stepId: currentStepId, logEntry: { timestamp: new Date().toISOString(), message: "Compiling all findings into a structured report.", type: "info" } });
+
+    onProgress?.({ stepId: currentStepId, status: "completed", progress: 100 });
 
     return {
       success: true,

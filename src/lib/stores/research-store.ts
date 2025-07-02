@@ -1,79 +1,73 @@
 import { create } from 'zustand';
-import { ResearchState, ResearchResult, ResearchRequest } from '@/types/research';
+import { ResearchResult, ResearchStepUpdate } from '@/types/research';
 
-interface ResearchStore extends ResearchState {
-  // Actions
-  startResearch: (request: ResearchRequest) => Promise<void>;
-  setCurrentResearch: (research: ResearchResult | undefined) => void;
-  addToHistory: (research: ResearchResult) => void;
-  setIsResearching: (isResearching: boolean) => void;
-  updateResearchProgress: (researchId: string, updates: Partial<ResearchResult>) => void;
+interface ResearchState {
+  currentResearch?: ResearchResult;
+  researchHistory: ResearchResult[];
+  isResearching: boolean;
 }
 
-export const useResearchStore = create<ResearchStore>((set, get) => ({
-  // State
+interface ResearchStore extends ResearchState {
+  updateResearchProgress: (update: ResearchStepUpdate) => void;
+  startNewResearch: (initialResearch: ResearchResult) => void;
+  addToHistory: (research: ResearchResult) => void;
+}
+
+export const useResearchStore = create<ResearchStore>((set) => ({
   currentResearch: undefined,
   researchHistory: [],
   isResearching: false,
-  currentStep: undefined,
 
-  // Actions
-  startResearch: async (request: ResearchRequest) => {
-    set({ isResearching: true });
-    
-    try {
-      const response = await fetch('/api/research/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start research');
-      }
-
-      const researchResult: ResearchResult = await response.json();
-      
-      set({ 
-        currentResearch: researchResult,
-        isResearching: researchResult.status === 'researching' || researchResult.status === 'analyzing',
-      });
-
-      // If research is complete, add to history
-      if (researchResult.status === 'completed') {
-        get().addToHistory(researchResult);
-      }
-    } catch (error) {
-      console.error('Failed to start research:', error);
-      set({ isResearching: false });
-      throw error;
-    }
+  startNewResearch: (initialResearch: ResearchResult) => {
+    set({
+      currentResearch: initialResearch,
+      isResearching: true,
+    });
   },
 
-  setCurrentResearch: (research: ResearchResult | undefined) => {
-    set({ currentResearch: research });
+  updateResearchProgress: (update) => {
+    set((state) => {
+      if (!state.currentResearch) return state;
+
+      const updatedSteps = [...state.currentResearch.steps];
+      let targetStep = updatedSteps.find(s => s.id === update.stepId);
+
+      if (!targetStep) {
+        // Create new step if it doesn't exist (e.g., initial "Thinking" step)
+        targetStep = {
+          id: update.stepId,
+          description: update.phase || 'Unknown Step', // Use phase as description initially
+          type: 'planning', // Default type, can be refined by AI
+          status: 'pending',
+          progress: 0,
+          startTime: new Date(),
+          logs: [],
+          phase: update.phase,
+        };
+        updatedSteps.push(targetStep);
+      }
+
+      // Update step properties
+      if (update.phase) targetStep.phase = update.phase;
+      if (update.status) targetStep.status = update.status;
+      if (update.progress !== undefined) targetStep.progress = update.progress;
+      if (update.logEntry) targetStep.logs?.push(update.logEntry);
+      if (update.status === 'completed' || update.status === 'failed') targetStep.endTime = new Date();
+
+      return {
+        currentResearch: {
+          ...state.currentResearch,
+          steps: updatedSteps,
+          currentPhase: update.phase || state.currentResearch.currentPhase, // Update overall phase
+        },
+        isResearching: update.status !== 'completed' && update.status !== 'failed',
+      };
+    });
   },
 
   addToHistory: (research: ResearchResult) => {
     set(state => ({
       researchHistory: [research, ...state.researchHistory.slice(0, 9)] // Keep last 10
     }));
-  },
-
-  setIsResearching: (isResearching: boolean) => {
-    set({ isResearching });
-  },
-
-  updateResearchProgress: (researchId: string, updates: Partial<ResearchResult>) => {
-    set(state => {
-      if (state.currentResearch?.id === researchId) {
-        return {
-          currentResearch: { ...state.currentResearch, ...updates }
-        };
-      }
-      return state;
-    });
   },
 }));

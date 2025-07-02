@@ -1,9 +1,9 @@
 import {
   conductResearch,
-  generateResearchReport,
 } from "@/lib/research/ai-agent";
 import createLogger from "@/lib/utils/logger";
 import { NextRequest, NextResponse } from "next/server";
+import { ResearchStepUpdate } from "@/types/research";
 
 const logger = createLogger("Research API");
 
@@ -28,64 +28,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.debug("Starting AI research agent...");
-    // Start AI agent research process
-    const result = await conductResearch(query, depth);
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
 
-    if (!result.success) {
-      logger.debug(`Research failed: ${result.error}`);
-      return NextResponse.json(
-        { error: result.error || "Research failed" },
-        { status: 500 }
-      );
-    }
+        const onProgressUpdate = (update: ResearchStepUpdate) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}
 
-    // Generate structured report if research was successful
-    let structuredReport = null;
-    try {
-      logger.debug("Attempting to generate structured report...");
-      // Assert result is of type { success: true, ... } here
-      const successfulResult = result as {
-        success: true;
-        content: string;
-        toolCalls: {
-          toolCallId: string;
-          toolName: string;
-          args: Record<string, unknown>;
-        }[];
-        usage: {
-          promptTokens: number;
-          completionTokens: number;
-          totalTokens: number;
+`));
         };
-      };
-      structuredReport = await generateResearchReport({
-        query,
-        content: successfulResult.content,
-        toolCalls: successfulResult.toolCalls,
-        depth,
-      });
-    } catch (reportError) {
-      console.warn("Failed to generate structured report:", reportError);
-      logger.debug("Structured report generation failed.", reportError);
-      // Continue without structured report
-    }
 
-    logger.debug("Research and report generation complete. Sending response.");
+        try {
+          logger.debug("Starting AI research agent...");
+          await conductResearch(query, depth, onProgressUpdate); // Pass the callback
+          controller.enqueue(encoder.encode(`event: end
+data: ${JSON.stringify({ message: "Research completed" })}
 
-    return NextResponse.json({
-      success: true,
-      query,
-      depth,
-      content: result.content,
-      toolCalls: result.toolCalls?.map((call) => ({
-        id: call.toolCallId,
-        name: call.toolName,
-        args: call.args,
-      })),
-      usage: result.usage,
-      structuredReport,
-      timestamp: new Date().toISOString(),
+`));
+        } catch (error: unknown) {
+          console.error("Research API error during streaming:", error);
+          logger.debug("Caught error during research streaming.", error);
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: error instanceof Error ? error.message : "An unknown error occurred during research." })}\n\n`));
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new NextResponse(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+      },
     });
   } catch (error) {
     console.error("Research API error:", error);
