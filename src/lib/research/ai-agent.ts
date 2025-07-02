@@ -182,7 +182,7 @@ export const ResearchReportSchema = z.object({
       type: z.enum(["web", "academic", "news", "other"]),
     })
   ),
-  researchDate: z.date().default(() => new Date()),
+  researchDate: z.string().describe("Date of research in ISO 8601 format"),
 });
 
 export type ResearchReport = z.infer<typeof ResearchReportSchema>;
